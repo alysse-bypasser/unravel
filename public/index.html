@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>unravel — JS deobfuscator, decompiler &amp; universal dumper</title>
+  <meta name="description" content="unravel: webcrack-style in-browser JS deobfuscator with multiple engines, a simplify toggle, a pure decompiler mode and a universal sandbox dumper that works on any JS obfuscator." />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧶</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🧶</span>
+      <h1>unravel</h1>
+      <span class="tagline">JS deobfuscator · decompiler · universal dumper</span>
+    </div>
+    <nav class="topnav">
+      <a href="#engines">Engines</a>
+      <a href="#how">How it works</a>
+      <a class="gh" href="https://github.com/j4k0xb/webcrack" target="_blank" rel="noopener" title="inspired by webcrack">webcrack fork vibes ↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Engine picker -->
+    <section id="engines" class="panel">
+      <div class="panel-head">
+        <h2>Engine</h2>
+        <label class="toggle-wrap" title="Aggressive cleanup: dead-var removal, simplification, smart renaming">
+          <span class="toggle-label">simplify</span>
+          <span class="switch">
+            <input type="checkbox" id="toggle-simplify" checked />
+            <span class="slider"></span>
+          </span>
+        </label>
+      </div>
+      <div id="engine-list" class="engine-grid"></div>
+    </section>
+
+    <!-- Workbench -->
+    <section class="workbench">
+      <div class="pane">
+        <div class="pane-head">
+          <h3>Input</h3>
+          <div class="pane-actions">
+            <button id="btn-sample" class="ghost" type="button">load sample</button>
+            <button id="btn-clear" class="ghost" type="button">clear</button>
+          </div>
+        </div>
+        <textarea id="input-code" spellcheck="false"
+          placeholder="// paste obfuscated / minified JS here (or drop a .js file)…"></textarea>
+        <div id="recommendation" class="rec-line"></div>
+      </div>
+
+      <div class="run-col">
+        <button id="run-btn" type="button">
+          <span class="run-label">unravel&nbsp;it</span>
+        </button>
+        <div class="status"><span id="status-dot" class="dot ok"></span><span id="status-text">ready</span></div>
+        <div class="hint">Ctrl / ⌘ + Enter</div>
+      </div>
+
+      <div class="pane">
+        <div class="pane-head">
+          <h3>Output</h3>
+          <div class="pane-actions">
+            <button id="btn-copy" class="ghost" type="button">copy</button>
+            <button id="btn-download" class="ghost" type="button">download</button>
+          </div>
+        </div>
+        <textarea id="output-code" spellcheck="false" readonly
+          placeholder="// cleaned output appears here"></textarea>
+        <div id="results-meta" style="display:none">
+          <div id="stats-line" class="stats"></div>
+          <ul id="notes-list" class="notes"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how" class="panel how">
+      <h2>How it works</h2>
+      <div class="how-grid">
+        <div>
+          <h4>Deobfuscators</h4>
+          <p><b>unravel ★</b> runs the full pipeline — sandboxed runtime string-array decode, control-flow
+          un-flattening, opaque-predicate resolution, anti-debug stripping, dead code &amp; dead variable
+          removal, then renaming. <b>so</b> specialises in string tables (base64/RC4/rotation),
+          <b>scrambled</b> rebuilds flattened switch state machines, <b>binder</b> kills self-defending
+          wrappers &amp; unwraps literal <code>eval()</code>, <b>TASLA</b> is the aggressive multi-pass
+          cleaner.</p>
+        </div>
+        <div>
+          <h4>Decompiler mode</h4>
+          <p>No deobfuscation at all — just structural recovery for people who only need readable output:
+          pretty-printing, declaration splitting, brace restoration and local-variable renaming. Perfect for
+          minified bundles that were never obfuscated.</p>
+        </div>
+        <div>
+          <h4>Universal dumper</h4>
+          <p>Works against <i>every</i> JS obfuscator because it doesn't try to symbolically undo them.
+          The script is instrumented (eval / new Function / string args / global probes) and executed inside
+          a sandboxed iframe with loop guards and a watchdog — then unravel dumps every decoded string,
+          eval payload and environment probe as a clean report.</p>
+        </div>
+        <div>
+          <h4>Simplify toggle</h4>
+          <p>On = aggressive extra passes: constant-driven branch pruning, var→const promotion, computed
+          member normalisation, unreferenced function/variable removal and heuristic renaming
+          (<code>_0x3f2a → fn2</code>, <code>a1 → handler</code>). Off = minimal, semantics-preserving output.</p>
+        </div>
+      </div>
+      <p class="fine">Everything runs locally in your browser — nothing is uploaded. Inspired by
+      <a href="https://github.com/j4k0xb/webcrack" target="_blank" rel="noopener">webcrack</a>.
+      For research on code you have the right to analyse.</p>
+    </section>
+  </main>
+
+  <footer>
+    <span>unravel 🧶 — built for vercel · client-side only</span>
+  </footer>
+
+  <!-- vendored babel standalone (offline-friendly) -->
+  <script src="vendor/babel.min.js"></script>
+  <script src="js/core/utils.js"></script>
+  <script src="js/core/passes.js"></script>
+  <script src="js/core/runtime.js"></script>
+  <script src="js/core/post.js"></script>
+  <script src="js/core/registry.js"></script>
+  <script src="js/engines/_helpers.js"></script>
+  <script src="js/engines/engine-unravel.js"></script>
+  <script src="js/engines/engine-so.js"></script>
+  <script src="js/engines/engine-scrambled.js"></script>
+  <script src="js/engines/engine-binder.js"></script>
+  <script src="js/engines/engine-tasla.js"></script>
+  <script src="js/engines/engine-decompiler.js"></script>
+  <script src="js/engines/engine-dumper.js"></script>
+  <script src="js/ui/app.js"></script>
+  <script>UnravelUI.init();</script>
+</body>
+</html>
