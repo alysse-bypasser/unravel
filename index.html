@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Unravel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e6ecef;--surface:#f7fafb;--ink:#16232b;--muted:#586a74;--accent:#2744c8;--on-accent:#fff;--line:#c3cfd6;--ok:#17724a;--err:#b3261e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10181d;--surface:#17222a;--ink:#e3ebef;--muted:#8fa2ad;--accent:#8da2ff;--on-accent:#10181d;--line:#2b3a44;--ok:#6fd3a2;--err:#ff8a80}}
+:root[data-theme="dark"]{--bg:#10181d;--surface:#17222a;--ink:#e3ebef;--muted:#8fa2ad;--accent:#8da2ff;--on-accent:#10181d;--line:#2b3a44;--ok:#6fd3a2;--err:#ff8a80}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 Inter,system-ui,sans-serif}
+main{max-width:1200px;margin:0 auto;padding:20px 16px 32px}
+h1{font:800 clamp(40px,9vw,76px)/.95 "Bricolage Grotesque",Inter,sans-serif;letter-spacing:-.03em;margin:8px 0 10px}
+.lede{max-width:56ch;color:var(--muted);margin:0 0 20px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:14px}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opts label{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer;font-size:13px}
+.opts input{accent-color:var(--accent)}
+.sel{display:flex;align-items:center;gap:6px;font-size:13px}
+select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.panes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:14px}
+.pane{display:flex;flex-direction:column;gap:6px}
+.pane header{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:14px}
+textarea{width:100%;height:clamp(240px,46vh,640px);resize:vertical;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:400 12.5px/1.55 "JetBrains Mono",ui-monospace,monospace;tab-size:2;white-space:pre;overflow:auto}
+#out{border-left:4px solid var(--accent)}
+button{font:600 14px Inter,system-ui,sans-serif;padding:9px 16px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button.go{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+button.small{padding:4px 10px;font-size:13px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#status{min-height:1.5em;margin:12px 0 0;font-size:14px;color:var(--ok)}
+#status.err{color:var(--err)}
+.note{color:var(--muted);font-size:13px;margin-top:18px;max-width:70ch}
+</style>
+</head>
+<body>
+<main>
+<h1>Unravel</h1>
+<p class="lede">Paste obfuscated JavaScript and get readable code back. It runs in your browser, and your code is parsed, never executed.</p>
+
+<div class="bar">
+  <button class="go" id="run">Unravel</button>
+  <button id="sample">Load sample</button>
+  <label class="sel">Mode <select id="mode"><option value="deob">Deobfuscate</option><option value="decomp">Decompile</option><option value="dump">Dump (runs the code)</option></select></label>
+  <label class="sel">Engine <select id="engine"><option value="unravel">Unravel</option><option value="webcrack">webcrack</option><option value="both">webcrack, then Unravel</option><option value="synchrony">Synchrony</option><option value="oio">obfuscator-io-deobfuscator</option><option value="packer">Packer unpacker (static)</option><option value="peeler">Layer peeler (static)</option></select></label>
+  <label class="sel">Wakaru polish <select id="polish"><option value="auto">Auto</option><option value="always">Always</option><option value="off">Off</option></select></label>
+  <div class="opts" role="group" aria-label="Transforms">
+    <label><input type="checkbox" id="o-lit" checked> Decode escapes and hex numbers</label>
+    <label><input type="checkbox" id="o-fold" checked> Fold constants</label>
+    <label><input type="checkbox" id="o-dead" checked> Remove dead branches</label>
+    <label><input type="checkbox" id="o-mem" checked> a["b"] to a.b</label>
+    <label><input type="checkbox" id="o-dec" checked> Decode obfuscator.io string arrays</label>
+    <label><input type="checkbox" id="o-seq" checked> Split comma sequences</label>
+    <label><input type="checkbox" id="o-names" checked> Smart-rename _0x names</label>
+    <label><input type="checkbox" id="o-short" checked> Rename one-letter names</label>
+    <label><input type="checkbox" id="o-read" checked> Expand minified statements</label>
+    <label><input type="checkbox" id="o-cff" checked> Unflatten control flow</label>
+    <label title="Removes debugger traps, self-defending checks and console blockers"><input type="checkbox" id="o-prot" checked> Remove anti-debug code</label>
+    <label title="Inline constants and unwrap immediately-called functions"><input type="checkbox" id="o-simp" checked> Simplify</label>
+    <label title="Also removes unused top-level variables"><input type="checkbox" id="o-prune" checked> Remove unused variables</label>
+  </div>
+</div>
+
+<label class="sel" id="dumpok" hidden><input type="checkbox" id="o-dumpok"> I understand Dump mode runs this code in a sandboxed iframe</label>
+<div class="panes">
+  <section class="pane">
+    <header><label for="in">Input</label><button class="small" id="clear">Clear</button></header>
+    <textarea id="in" spellcheck="false" placeholder="Paste JavaScript here"></textarea>
+  </section>
+  <section class="pane">
+    <header><label for="out">Output</label><button class="small" id="copy">Copy</button></header>
+    <textarea id="out" spellcheck="false" readonly placeholder="Readable code appears here"></textarea>
+  </section>
+</div>
+<p id="status" role="status"></p>
+<p class="note">The Unravel engine parses your code and never runs it. The webcrack engine runs string decoders in an isolated iframe. webcrack and Wakaru load from jsDelivr the first time you use them, and everything stays in your browser. Never run code you have not read.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const SAMPLE = String.raw`var _0x1a2b=['\x6c\x6f\x67'];(function(_0x3c4d,_0x5e6f){var _0x7a8b=0x1f4+-0x1f0;_0x3c4d['\x63\x6f\x6e\x73\x6f\x6c\x65']['\x6c\x6f\x67'](_0x5e6f+'\x2c\x20'+'\x57\x6f\x72\x6c\x64'),_0x7a8b=!![]?0x2*0x5:0x0;if(!![]){_0x3c4d['\x61\x6c\x65\x72\x74'](_0x7a8b)}else{_0x3c4d['\x72\x65\x6d\x6f\x76\x65']()}})(window,'Hello');`;
+const LABELS = {unflattened:'flattened loops restored',peeled:'layers peeled',inlined:'values inlined',unwrapped:'wrappers unwrapped',modernized:'constructs modernized',dumped:'events captured',removed:'unused declarations removed',expanded:'statements expanded',decoded:'strings decoded',literals:'literals decoded',folded:'expressions folded',branches:'dead branches removed',members:'member accesses simplified',sequences:'sequences split',renamed:'names renamed'};
+let stats = {}, counter = 0;
+
+const make = o => ({types: t}) => {
+  const bump = k => stats[k] = (stats[k] || 0) + 1, v = {};
+  if (o.lit) {
+    v.NumericLiteral = p => { const e = p.node.extra; if (e && e.raw !== String(p.node.value)) { delete p.node.extra; bump('literals'); } };
+    v.StringLiteral = p => { const e = p.node.extra; if (e && /\\/.test(e.raw)) { delete p.node.extra; bump('literals'); } };
+  }
+  if (o.fold) {
+    const fold = p => {
+      const n = p.node;
+      if (t.isUnaryExpression(n) && (n.operator === '-' || n.operator === '+') && t.isNumericLiteral(n.argument)) return;
+      const r = p.evaluate(); if (!r.confident) return;
+      const x = r.value, ty = typeof x;
+      if ((ty === 'string' && x.length < 5000) || ty === 'boolean' || (ty === 'number' && isFinite(x) && !Object.is(x, -0))) { p.replaceWith(t.valueToNode(x)); bump('folded'); }
+    };
+    v.BinaryExpression = {exit: p => { const n = p.node; if (n.operator === '+' && t.isStringLiteral(n.right) && t.isBinaryExpression(n.left, {operator: '+'}) && t.isStringLiteral(n.left.right)) { n.left.right = t.stringLiteral(n.left.right.value + n.right.value); p.replaceWith(n.left); bump('folded'); return; } fold(p); }}; v.UnaryExpression = {exit: fold};
+  }
+  if (o.dead) {
+    v.ConditionalExpression = p => { const r = p.get('test').evaluate(); if (r.confident) { p.replaceWith(r.value ? p.node.consequent : p.node.alternate); bump('branches'); } };
+    v.IfStatement = p => {
+      const r = p.get('test').evaluate(); if (!r.confident) return;
+      const keep = r.value ? p.node.consequent : p.node.alternate;
+      keep ? p.replaceWith(keep) : p.remove(); bump('branches');
+    };
+  }
+  if (o.mem) v.MemberExpression = p => {
+    const n = p.node;
+    if (n.computed && t.isStringLiteral(n.property) && t.isValidIdentifier(n.property.value, false)) { n.computed = false; n.property = t.identifier(n.property.value); bump('members'); }
+  };
+  if (o.seq) v.ExpressionStatement = p => {
+    if (p.inList && t.isSequenceExpression(p.node.expression)) { p.replaceWithMultiple(p.node.expression.expressions.map(e => t.expressionStatement(e))); bump('sequences'); }
+  };
+  if (o.fold) { const f0 = v.UnaryExpression.exit; v.UnaryExpression = {exit: p => { if (p.node.operator === 'void' && t.isNumericLiteral(p.node.argument)) { p.replaceWith(t.identifier('undefined')); bump('folded'); return; } f0(p); }}; }
+
+  const lit = x => t.isStringLiteral(x) || t.isNumericLiteral(x) || t.isBooleanLiteral(x);
+  if (o.fold) {
+    // String tricks like "abc".split("").reverse().join("") and String.fromCharCode(...).
+    const M = {split:1,reverse:1,join:1,slice:1,substr:1,substring:1,concat:1,toLowerCase:1,toUpperCase:1,trim:1,repeat:1,charAt:1,indexOf:1,replace:1,padStart:1,padEnd:1};
+    const pe = n => {
+      if (t.isStringLiteral(n) || t.isNumericLiteral(n) || t.isBooleanLiteral(n)) return n.value;
+      if (t.isArrayExpression(n)) return n.elements.map(pe);
+      if (t.isCallExpression(n) && t.isMemberExpression(n.callee) && !n.callee.computed && t.isIdentifier(n.callee.property)) {
+        const m = n.callee.property.name, ob0 = n.callee.object;
+        if (t.isIdentifier(ob0, {name: 'String'}) && m === 'fromCharCode') return String.fromCharCode(...n.arguments.map(pe));
+        if (!M[m]) throw 0;
+        const ob = pe(ob0), a = n.arguments.map(pe);
+        if (!(typeof ob === 'string' || Array.isArray(ob))) throw 0;
+        if (m === 'replace' && (typeof a[0] !== 'string' || typeof a[1] !== 'string')) throw 0;
+        return ob[m](...a);
+      }
+      throw 0;
+    };
+    v.CallExpression = {exit(p) { try { const r = pe(p.node), ty = typeof r; if ((ty === 'string' && r.length < 5000) || (ty === 'number' && isFinite(r))) { p.replaceWith(t.valueToNode(r)); bump('folded'); } } catch (e) {} }};
+    v.TemplateLiteral = {exit(p) {
+      const n = p.node; if (!n.expressions.some(lit) || n.quasis.some(q => q.value.cooked == null)) return;
+      const qs = [], ex = []; let cur = n.quasis[0].value.cooked;
+      n.expressions.forEach((x, i) => { if (lit(x)) cur += String(x.value) + n.quasis[i + 1].value.cooked; else { qs.push(cur); ex.push(x); cur = n.quasis[i + 1].value.cooked; } });
+      qs.push(cur);
+      p.replaceWith(ex.length ? t.templateLiteral(qs.map((s, i) => t.templateElement({raw: esc(s), cooked: s}, i === qs.length - 1)), ex) : t.stringLiteral(qs[0])); bump('folded');
+    }};
+  }
+  // Names are guessed from how a value is created and used.
+  const lower = s => s[0].toLowerCase() + s.slice(1), clean = s => s.replace(/[^A-Za-z0-9_$]/g, '').replace(/^\d+/, '');
+  const CB = {forEach:['item','index','list'],map:['item','index','list'],filter:['item','index','list'],some:['item','index','list'],every:['item','index','list'],find:['item','index','list'],findIndex:['item','index','list'],reduce:['acc','item','index','list'],then:['result'],catch:['err'],addEventListener:['event'],on:['data']};
+  const CALL = {split:'parts',map:'mapped',filter:'filtered',slice:'slice',join:'joined',indexOf:'index',parse:'parsed',stringify:'json',replace:'replaced',toString:'str',charAt:'ch',charCodeAt:'code',getElementById:'element',querySelector:'element',querySelectorAll:'elements',createElement:'element',random:'rand',floor:'floored',keys:'keys',values:'values',entries:'entries',concat:'merged',fetch:'response',push:'count'};
+  const USE = {push:'arr',pop:'arr',shift:'arr',unshift:'arr',splice:'arr',forEach:'arr',join:'arr',charAt:'str',charCodeAt:'str',substring:'str',substr:'str',toLowerCase:'str',toUpperCase:'str',split:'str',replace:'str',trim:'str',appendChild:'element',addEventListener:'element',setAttribute:'element',classList:'element',style:'element',innerHTML:'element',then:'promise',emit:'emitter'};
+  const fromInit = e => {
+    if (!e) return null;
+    if (t.isThisExpression(e)) return 'self';
+    if (t.isAwaitExpression(e)) return fromInit(e.argument) || 'result';
+    if (t.isCallExpression(e) || t.isNewExpression(e)) {
+      const c = e.callee;
+      if (t.isIdentifier(c, {name:'require'}) && t.isStringLiteral(e.arguments[0])) return clean(e.arguments[0].value.split('/').pop().replace(/\.\w+$/, '')) || 'mod';
+      if (t.isNewExpression(e)) return t.isIdentifier(c) ? lower(c.name) : t.isMemberExpression(c) && t.isIdentifier(c.property) ? lower(c.property.name) : null;
+      if (t.isMemberExpression(c) && !c.computed && t.isIdentifier(c.property)) {
+        const m = c.property.name, g = /^get([A-Z]\w*)/.exec(m);
+        return CALL[m] || (g ? lower(g[1]) : m + 'Result');
+      }
+      return null;
+    }
+    if (t.isMemberExpression(e) && !e.computed && t.isIdentifier(e.property)) return e.property.name === 'length' ? 'len' : e.property.name;
+    if (t.isObjectExpression(e)) return 'obj';
+    if (t.isArrayExpression(e)) return 'arr';
+    if (t.isFunctionExpression(e) || t.isArrowFunctionExpression(e)) return 'fn';
+    if (t.isStringLiteral(e) || t.isTemplateLiteral(e)) return 'str';
+    if (t.isBinaryExpression(e, {operator:'+'}) && (t.isStringLiteral(e.left) || t.isStringLiteral(e.right))) return 'str';
+    if (t.isNumericLiteral(e)) return 'num';
+    if (t.isBooleanLiteral(e)) return 'flag';
+    if (t.isRegExpLiteral(e)) return 'regex';
+    return null;
+  };
+  const byUse = b => {
+    for (const r of b.referencePaths) {
+      const m = r.parentPath;
+      if (m.isMemberExpression({object: r.node}) && t.isIdentifier(m.node.property) && USE[m.node.property.name]) return USE[m.node.property.name];
+      if (m.isCallExpression({callee: r.node})) return 'fn';
+    }
+    return null;
+  };
+  const pick = b => {
+    const n = b.path.node;
+    if (b.path.isCatchClause()) return 'err';
+    if (b.kind === 'param') {
+      const fn = b.path.parentPath, call = fn.parentPath, idx = fn.node.params.indexOf(n);
+      if (call && (call.isCallExpression() || call.isNewExpression())) {
+        const c = call.node.callee, m = t.isMemberExpression(c) && t.isIdentifier(c.property) ? c.property.name : t.isIdentifier(c) ? c.name : '';
+        if (m === 'Promise') return ['resolve', 'reject'][idx] || 'arg';
+        if (CB[m] && CB[m][idx]) return CB[m][idx];
+      }
+      if (call && call.isCallExpression({callee: fn.node})) {
+        const a = call.node.arguments[idx], W = {window: 'win', document: 'doc'};
+        if (t.isIdentifier(a) && !/^_0x/.test(a.name)) return W[a.name] || a.name;
+        if (t.isStringLiteral(a) && /^[A-Za-z]{2,12}$/.test(a.value)) return lower(a.value);
+        if (t.isMemberExpression(a) && !a.computed && t.isIdentifier(a.property)) return a.property.name;
+        if (a) return fromInit(a) || byUse(b) || 'arg';
+      }
+      return byUse(b) || 'arg';
+    }
+    if (t.isFunctionDeclaration(n)) return 'fn';
+    if (t.isClassDeclaration(n)) return 'Class';
+    if (t.isVariableDeclarator(n)) {
+      const d = b.path.parentPath, loop = d && d.parentPath;
+      if (loop && loop.isForStatement({init: d.node})) return ['i', 'j', 'k', 'l', 'm'];
+      if (loop && (loop.isForInStatement() || loop.isForOfStatement())) return loop.isForInStatement() ? 'key' : 'item';
+      return fromInit(n.init) || byUse(b) || 'value';
+    }
+    return 'value';
+  };
+  const rename = p => {
+    const used = new Set(Object.keys(p.scope.globals));
+    Object.keys(p.scope.bindings).forEach(k => used.add(k));
+    p.traverse({Scopable(q) { Object.keys(q.scope.bindings).forEach(k => used.add(k)); }});
+    const todo = [], seen = new Set();
+    const visit = q => {
+      const s = q.scope; if (s.block !== q.node || seen.has(s)) return; seen.add(s);
+      for (const nm of Object.keys(s.bindings)) if (/^_0x\w*$/i.test(nm) || /[\u200b-\u200f\u2060\ufeff]/.test(nm) || /^[Il1O0]{4,}$/.test(nm) || (o.short && /^[A-Za-z]$/.test(nm) && !'ijk_$'.includes(nm))) todo.push([s, nm, s.bindings[nm]]);
+    };
+    visit(p); p.traverse({Scopable: visit});
+    for (const [s, nm, b] of todo) {
+      const c = [].concat(pick(b)).map(x => clean(x) || 'value'); let k = c.find(x => !used.has(x) && t.isValidIdentifier(x)), n = 1;
+      if (!k) { k = c[0]; while (used.has(k) || !t.isValidIdentifier(k)) k = c[0] + (++n); }
+      used.add(k); s.rename(nm, k); bump('renamed');
+    }
+  };
+  const expand = p => p.traverse({
+    IfStatement(q) {
+      const n = q.node;
+      if (!t.isBlockStatement(n.consequent)) { n.consequent = t.blockStatement([n.consequent]); bump('expanded'); }
+      if (n.alternate && !t.isBlockStatement(n.alternate) && !t.isIfStatement(n.alternate)) { n.alternate = t.blockStatement([n.alternate]); bump('expanded'); }
+    },
+    BlockStatement(q) {
+      if ((q.parentPath.isBlockStatement() || q.parentPath.isProgram()) && q.inList && !q.node.body.some(x => (t.isVariableDeclaration(x) && x.kind !== 'var') || t.isFunctionDeclaration(x) || t.isClassDeclaration(x))) {
+        q.node.body.length ? q.replaceWithMultiple(q.node.body) : q.remove(); bump('expanded');
+      }
+    },
+    Loop(q) { if (!t.isBlockStatement(q.node.body)) { q.node.body = t.blockStatement([q.node.body]); bump('expanded'); } },
+    ExpressionStatement(q) {
+      const e = q.node.expression, blk = x => t.blockStatement([t.expressionStatement(x)]);
+      if (t.isConditionalExpression(e)) { q.replaceWith(t.ifStatement(e.test, blk(e.consequent), blk(e.alternate))); bump('expanded'); }
+      else if (t.isLogicalExpression(e, {operator:'&&'})) { q.replaceWith(t.ifStatement(e.left, blk(e.right))); bump('expanded'); }
+      else if (t.isLogicalExpression(e, {operator:'||'})) { q.replaceWith(t.ifStatement(t.unaryExpression('!', e.left), blk(e.right))); bump('expanded'); }
+    },
+    VariableDeclaration(q) {
+      const n = q.node;
+      if (n.declarations.length > 1 && q.inList && !q.parentPath.isExportNamedDeclaration()) { q.replaceWithMultiple(n.declarations.map(d => t.variableDeclaration(n.kind, [d]))); bump('expanded'); }
+    },
+    ReturnStatement(q) {
+      const a = q.node.argument;
+      if (q.inList && t.isSequenceExpression(a)) { const ex = a.expressions; q.replaceWithMultiple([...ex.slice(0, -1).map(x => t.expressionStatement(x)), t.returnStatement(ex[ex.length - 1])]); bump('expanded'); }
+    }
+  });
+  // Unused code removal: only touches declarations whose values have no side effects.
+  const pure = e => !e || (t.isLiteral(e) && !t.isTemplateLiteral(e)) || t.isIdentifier(e) || t.isFunction(e) || t.isThisExpression(e) ||
+    (t.isArrayExpression(e) && e.elements.every(x => x && pure(x))) ||
+    (t.isObjectExpression(e) && e.properties.every(x => t.isObjectProperty(x) && !x.computed && pure(x.value))) ||
+    (t.isUnaryExpression(e) && e.operator !== 'delete' && pure(e.argument)) ||
+    (t.isCallExpression(e) && t.isFunctionExpression(e.callee) && !e.arguments.length && !e.callee.params.length && e.callee.body.body.every(x => (t.isVariableDeclaration(x) && x.declarations.every(d => pure(d.init))) || (t.isReturnStatement(x) && pure(x.argument))));
+  const mentions = (node, name) => { let f = false; t.traverseFast(node, n => { if (t.isIdentifier(n, {name})) f = true; }); return f; };
+  const deadStore = p => p.traverse({VariableDeclaration(q) {
+    const n = q.node; if (n.declarations.length !== 1 || !q.inList || n.kind === 'const') return;
+    const d = n.declarations[0]; if (!t.isIdentifier(d.id) || !pure(d.init)) return;
+    const name = d.id.name, sibs = q.container;
+    for (let i = q.key + 1; i < sibs.length; i++) {
+      const st = sibs[i];
+      if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, {operator: '='}) && t.isIdentifier(st.expression.left, {name}) && pure(st.expression.right) && !mentions(st.expression.right, name)) {
+        d.init = st.expression.right; q.getSibling(i).remove(); bump('removed'); return;
+      }
+      if (mentions(st, name)) return;
+    }
+  }});
+  const pruneOnce = p => {
+    p.scope.crawl(); const seen = new Set();
+    const go = q => {
+      const s = q.scope; if (s.block !== q.node || seen.has(s)) return; seen.add(s);
+      for (const b of Object.values(s.bindings)) {
+        const nb = b.path.node, ext = t.isFunctionDeclaration(nb) ? b.referencePaths.some(r => !r.findParent(x => x.node === nb)) : b.referenced;
+        if (ext || b.kind === 'param' || b.kind === 'module') continue;
+        const n = b.path.node;
+        if (!((t.isVariableDeclarator(n) && pure(n.init)) || t.isFunctionDeclaration(n))) continue;
+        const viol = b.constantViolations;
+        if (!viol.every(c => c.isAssignmentExpression({operator: '='}) && c.parentPath.isExpressionStatement() && pure(c.node.right))) continue;
+        viol.forEach(c => c.parentPath.remove()); b.path.remove(); bump('removed');
+      }
+    };
+    go(p); p.traverse({Scopable: go});
+  };
+  const prune = p => { for (let i = 0; i < 4; i++) { const b4 = stats.removed || 0; pruneOnce(p); if ((stats.removed || 0) === b4) break; } };
+  // A variable or parameter assigned a literal exactly once, before every use, is a constant.
+  const inlineOnce = p => {
+    p.scope.crawl(); const seen = new Set();
+    const go = q => {
+      const s = q.scope; if (s.block !== q.node || seen.has(s)) return; seen.add(s);
+      for (const b of Object.values(s.bindings)) {
+        if (b.constantViolations.length !== 1 || b.kind === 'module') continue;
+        const c = b.constantViolations[0], stmt = c.parentPath;
+        if (!c.isAssignmentExpression({operator: '='}) || !stmt.isExpressionStatement() || !t.isIdentifier(c.node.left)) continue;
+        const r = c.node.right; if (!(t.isStringLiteral(r) || t.isNumericLiteral(r) || t.isBooleanLiteral(r))) continue;
+        if (!stmt.parentPath.isBlockStatement() || stmt.parentPath.scope !== s) continue;
+        if (b.path.isVariableDeclarator() && !pure(b.path.node.init)) continue;
+        const st = stmt.node.start; if (typeof st !== 'number') continue;
+        if (b.referencePaths.some(x => !(x.node.start > st) || x.findParent(f => f.isFunctionDeclaration()))) continue;
+        b.referencePaths.forEach(x => x.replaceWith(t.cloneNode(r))); stmt.remove(); bump('inlined');
+      }
+    };
+    go(p); p.traverse({Scopable: go});
+  };
+  // Parameters that are never read can go, along with assignments to them.
+  const cleanParams = p => {
+    p.scope.crawl();
+    p.traverse({Function(q) {
+      const s = q.scope, ps = q.node.params;
+      for (let i = ps.length - 1; i >= 0; i--) {
+        if (!t.isIdentifier(ps[i])) break; const b = s.getOwnBinding(ps[i].name);
+        if (!b || b.referenced || !b.constantViolations.every(c => c.isAssignmentExpression({operator: '='}) && c.parentPath.isExpressionStatement() && pure(c.node.right))) break;
+        b.constantViolations.forEach(c => c.parentPath.remove());
+        const call = q.parentPath; if (!(q.isFunctionExpression() && call.isCallExpression({callee: q.node}))) break;
+        const a = call.node.arguments[i]; if (a && !pure(a)) break;
+        call.node.arguments.splice(i, 1); ps.splice(i, 1); bump('removed');
+      }
+    }});
+  };
+  // Proxy objects: o.key(a, b) becomes a + b, and o.key becomes its literal value.
+  const subst = (n, mp) => {
+    if (t.isIdentifier(n) && Object.prototype.hasOwnProperty.call(mp, n.name)) return t.cloneNode(mp[n.name]);
+    for (const k of t.VISITOR_KEYS[n.type] || []) {
+      if ((t.isMemberExpression(n) && !n.computed && k === 'property') || (t.isObjectProperty(n) && !n.computed && k === 'key')) continue;
+      const c = n[k]; if (Array.isArray(c)) n[k] = c.map(x => x ? subst(x, mp) : x); else if (c) n[k] = subst(c, mp);
+    }
+    return n;
+  };
+  const uses = (e, name) => { let c = 0; t.traverseFast(e, n => { if (t.isIdentifier(n, {name})) c++; }); return c; };
+  const simple = x => t.isIdentifier(x) || t.isLiteral(x);
+  const inlineProxies = p => {
+    p.scope.crawl(); const seen = new Set();
+    const go = q => {
+      const s = q.scope; if (s.block !== q.node || seen.has(s)) return; seen.add(s);
+      for (const b of Object.values(s.bindings)) {
+        const d = b.path.node; if (!b.constant || !t.isVariableDeclarator(d) || !t.isIdentifier(d.id) || !t.isObjectExpression(d.init) || !b.referenced) continue;
+        const props = {};
+        for (const pr of d.init.properties) {
+          if (!t.isObjectProperty(pr) || pr.computed) continue;
+          const k = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : null, v = pr.value;
+          if (k === null) continue;
+          if (lit(v) || (t.isFunctionExpression(v) && v.params.every(x => t.isIdentifier(x)) && v.body.body.length === 1 && t.isReturnStatement(v.body.body[0]) && v.body.body[0].argument)) props[k] = v;
+        }
+        let done = 0; const refs = b.referencePaths.slice().reverse();
+        for (const r of refs) {
+          try {
+            const m = r.parentPath; if (!m.isMemberExpression({object: r.node})) continue;
+            const k = !m.node.computed && t.isIdentifier(m.node.property) ? m.node.property.name : m.node.computed && t.isStringLiteral(m.node.property) ? m.node.property.value : null;
+            if (k === null || !props[k]) continue; const v = props[k];
+            if (lit(v)) { m.replaceWith(t.cloneNode(v)); done++; continue; }
+            const call = m.parentPath; if (!call.isCallExpression({callee: m.node})) continue;
+            const ret = v.body.body[0].argument, args = call.node.arguments;
+            if (args.length !== v.params.length || args.some(a => t.isSpreadElement(a))) continue;
+            if (v.params.some((pm, i) => { const c = uses(ret, pm.name); return (c === 0 && !pure(args[i])) || (c > 1 && !simple(args[i])); })) continue;
+            const mp = {}; v.params.forEach((pm, i) => mp[pm.name] = args[i]);
+            call.replaceWith(subst(t.cloneNode(ret), mp)); done++;
+          } catch (e) {}
+        }
+        if (done) bump('inlined');
+      }
+    };
+    go(p); p.traverse({Scopable: go});
+  };
+  // Control-flow flattening: while (true) { switch (order[i++]) { case "0": ...; continue; } break; } with order = "2|0|1".split("|")
+  const unflatten = p => {
+    p.scope.crawl();
+    p.traverse({WhileStatement(q) {
+      const n = q.node;
+      if (!(t.isBooleanLiteral(n.test, {value: true}) || (t.isNumericLiteral(n.test) && n.test.value)) || !t.isBlockStatement(n.body)) return;
+      const b = n.body.body; if (b.length !== 2 || !t.isSwitchStatement(b[0]) || !t.isBreakStatement(b[1])) return;
+      const sw = b[0], d = sw.discriminant;
+      if (!t.isMemberExpression(d) || !d.computed || !t.isIdentifier(d.object) || !t.isUpdateExpression(d.property, {operator: '++', prefix: false}) || !t.isIdentifier(d.property.argument)) return;
+      const ob = q.scope.getBinding(d.object.name), ib = q.scope.getBinding(d.property.argument.name);
+      if (!ob || !ib || ob.references !== 1 || ib.references !== 1) return;
+      const od = ob.path.node, id = ib.path.node;
+      if (!t.isVariableDeclarator(od) || !t.isCallExpression(od.init) || !t.isMemberExpression(od.init.callee) || !t.isStringLiteral(od.init.callee.object) || !t.isIdentifier(od.init.callee.property, {name: 'split'}) || !t.isStringLiteral(od.init.arguments[0])) return;
+      if (!t.isVariableDeclarator(id) || !t.isNumericLiteral(id.init, {value: 0})) return;
+      const order = od.init.callee.object.value.split(od.init.arguments[0].value), map = {};
+      for (const c of sw.cases) {
+        if (!t.isStringLiteral(c.test)) return;
+        const cs = c.consequent.slice(); if (t.isContinueStatement(cs[cs.length - 1]) && !cs[cs.length - 1].label) cs.pop();
+        map[c.test.value] = cs;
+      }
+      const out = []; for (const k of order) { if (!map[k]) return; out.push(...map[k]); }
+      let jump = false; out.forEach(st => t.traverseFast(st, x => { if (t.isContinueStatement(x) || t.isBreakStatement(x)) jump = true; }));
+      if (jump) return;
+      ob.path.remove(); ib.path.remove(); q.replaceWithMultiple(out); bump('unflattened');
+    }});
+  };
+  // Anti-debug, self-defending and console-disabling blocks, recognised by their telltale strings.
+  const MARKS = ['(((.+)+)+)+$', 'debugger', 'while (true) {}', 'function *\\( *\\)', 'return (function() {}.constructor("return this")( ));'], CON = 'log,warn,info,error,exception,table,trace';
+  const hasMark = node => { let f = false; t.traverseFast(node, n => { if ((t.isStringLiteral(n) && MARKS.includes(n.value)) || (t.isArrayExpression(n) && n.elements.length === 7 && n.elements.every(e => t.isStringLiteral(e)) && n.elements.map(e => e.value).join() === CON)) f = true; }); return f; };
+  const stripProtections = p => {
+    const gone = new Set(), kill = [];
+    p.traverse({
+      VariableDeclaration(q) { const n = q.node, d = n.declarations[0]; if (q.inList && n.declarations.length === 1 && t.isIdentifier(d.id) && t.isCallExpression(d.init) && d.init.arguments.some(a => t.isFunctionExpression(a) && hasMark(a))) { gone.add(d.id.name); kill.push(q); } },
+      TryStatement(q) {
+        if (!q.parentPath.isProgram() || !hasMark(q.node)) return; let ok = true;
+        const outside = b => !b || b.referencePaths.some(r => !r.findParent(x => x === q));
+        q.traverse({
+          AssignmentExpression(a) { if (t.isIdentifier(a.node.left) && outside(q.scope.getBinding(a.node.left.name))) ok = false; },
+          VariableDeclarator(d) { if (t.isIdentifier(d.node.id) && outside(q.scope.getBinding(d.node.id.name))) ok = false; }
+        });
+        if (ok) kill.push(q);
+      },
+      FunctionDeclaration(q) { if (q.parentPath.isProgram() && hasMark(q.node)) { gone.add(q.node.id.name); kill.push(q); } },
+      ExpressionStatement(q) { const e = q.node.expression; if (t.isCallExpression(e) && t.isFunctionExpression(e.callee) && !e.callee.params.length && e.callee.body.body.length === 1 && hasMark(e.callee)) kill.push(q); }
+    });
+    p.traverse({ExpressionStatement(q) { const e = q.node.expression; if (t.isCallExpression(e) && ((t.isIdentifier(e.callee) && gone.has(e.callee.name)) || e.arguments.some(a => t.isIdentifier(a) && gone.has(a.name))) && !kill.includes(q)) kill.push(q); }});
+    for (const q of kill) { try { if (!q.findParent(x => kill.includes(x))) { q.remove(); bump('removed'); } } catch (e) {} }
+  };
+  // A function used exactly once, with a single return, is folded into its call site.
+  const inlineCalls = p => {
+    p.scope.crawl(); const seen = new Set();
+    const go = q => {
+      const s = q.scope; if (s.block !== q.node || seen.has(s)) return; seen.add(s);
+      for (const b of Object.values(s.bindings)) {
+        const d = b.path.node; if (!b.constant || b.references !== 1 || !t.isVariableDeclarator(d) || !t.isIdentifier(d.id)) continue;
+        const f = d.init; if (!t.isFunctionExpression(f) && !t.isArrowFunctionExpression(f)) continue;
+        if (f.async || f.generator || !f.params.every(x => t.isIdentifier(x))) continue;
+        const ret = t.isBlockStatement(f.body) ? (f.body.body.length === 1 && t.isReturnStatement(f.body.body[0]) ? f.body.body[0].argument : null) : f.body;
+        if (!ret) continue;
+        let bad = false; t.traverseFast(ret, n => { if (t.isThisExpression(n) || t.isIdentifier(n, {name: 'arguments'}) || t.isFunction(n)) bad = true; }); if (bad) continue;
+        const r = b.referencePaths[0], call = r.parentPath; if (!call.isCallExpression({callee: r.node})) continue;
+        const args = call.node.arguments; if (args.length !== f.params.length || args.some(a => t.isSpreadElement(a))) continue;
+        if (f.params.some((pm, i) => { const c = uses(ret, pm.name); return (c === 0 && !pure(args[i])) || (c > 1 && !simple(args[i])); })) continue;
+        const mp = {}; f.params.forEach((pm, i) => mp[pm.name] = args[i]);
+        call.replaceWith(subst(t.cloneNode(ret), mp)); bump('inlined');
+      }
+    };
+    go(p); p.traverse({Scopable: go});
+  };
+  // Simplify: inline constants, then unwrap functions that are called immediately.
+  const inlineArgs = p => p.traverse({CallExpression(c) {
+    const n = c.node, f = c.get('callee'); if (!f.isFunctionExpression()) return;
+    let uses = false; f.traverse({Identifier(i) { if (i.node.name === 'arguments') uses = true; }}); if (uses) return;
+    const ps = n.callee.params;
+    for (let i = Math.min(ps.length, n.arguments.length) - 1; i >= 0; i--) {
+      const a = n.arguments[i], prm = ps[i]; if (!t.isIdentifier(prm)) continue;
+      const b = f.scope.getBinding(prm.name); if (!b || !b.constant) continue;
+      if (!((t.isLiteral(a) && !t.isTemplateLiteral(a) && !t.isRegExpLiteral(a)) || (t.isIdentifier(a) && !c.scope.hasBinding(a.name, true)))) continue;
+      b.referencePaths.forEach(r => r.replaceWith(t.cloneNode(a))); ps.splice(i, 1); n.arguments.splice(i, 1); bump('inlined');
+    }
+  }});
+  const inlineConsts = p => {
+    p.scope.crawl(); const seen = new Set();
+    const go = q => {
+      const s = q.scope; if (s.block !== q.node || seen.has(s)) return; seen.add(s);
+      for (const b of Object.values(s.bindings)) {
+        const d = b.path.node; if (!b.constant || b.kind === 'param' || !t.isVariableDeclarator(d) || !t.isIdentifier(d.id) || !b.referenced) continue;
+        const e = d.init; if (!e || !(t.isStringLiteral(e) || t.isNumericLiteral(e) || t.isBooleanLiteral(e) || t.isNullLiteral(e))) continue;
+        if (t.isStringLiteral(e) && e.value.length > 24 && b.references > 1) continue;
+        b.referencePaths.forEach(r => r.replaceWith(t.cloneNode(e))); b.path.remove(); bump('inlined');
+      }
+    };
+    go(p); p.traverse({Scopable: go});
+  };
+  const unwrap = p => {
+    for (const st of p.get('body')) {
+      if (!st.isExpressionStatement()) continue;
+      const c = st.node.expression;
+      if (!t.isCallExpression(c) || !t.isFunctionExpression(c.callee) || c.callee.params.length || c.arguments.length || c.callee.async || c.callee.generator) continue;
+      let bad = false;
+      st.traverse({ReturnStatement(r) { if (r.getFunctionParent().node === c.callee) bad = true; }, ThisExpression() { bad = true; }, Identifier(i) { if (i.node.name === 'arguments') bad = true; }});
+      if (!bad) { st.replaceWithMultiple(c.callee.body.body); bump('unwrapped'); }
+    }
+  };
+  // Decompile: rewrite old-style code into modern syntax.
+  const esc = s => s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${').replace(/\n/g, '\\n').replace(/\t/g, '\\t').replace(/\r/g, '\\r');
+  const modernize = p => { p.scope.crawl(); p.traverse({
+    BinaryExpression: {exit(q) {
+      const n = q.node; if (n.operator !== '+' || q.parentPath.isBinaryExpression({operator: '+'})) return;
+      const ops = []; (function f(x) { if (t.isBinaryExpression(x, {operator: '+'})) { f(x.left); ops.push(x.right); } else ops.push(x); })(n);
+      if (!(t.isStringLiteral(ops[0]) || t.isStringLiteral(ops[1])) || ops.every(x => t.isStringLiteral(x))) return;
+      if (ops.some(x => t.isStringLiteral(x) && /[\x00-\x08\x0b-\x1f\u2028\u2029]/.test(x.value))) return;
+      const qs = [], ex = []; let cur = '';
+      for (const x of ops) { if (t.isStringLiteral(x)) cur += x.value; else { qs.push(cur); cur = ''; ex.push(x); } }
+      qs.push(cur);
+      q.replaceWith(t.templateLiteral(qs.map((s, i) => t.templateElement({raw: esc(s), cooked: s}, i === qs.length - 1)), ex)); bump('modernized');
+    }},
+    FunctionExpression(q) {
+      const n = q.node; if (n.id || n.async || n.generator || !q.parentPath.isCallExpression() || q.listKey !== 'arguments') return;
+      let bad = false; q.traverse({ThisExpression(r) { if (r.getFunctionParent() === q) bad = true; }, Identifier(r) { if (r.node.name === 'arguments' && r.getFunctionParent() === q) bad = true; }});
+      if (bad) return; const b = n.body.body;
+      q.replaceWith(t.arrowFunctionExpression(n.params, b.length === 1 && t.isReturnStatement(b[0]) && b[0].argument ? b[0].argument : n.body)); bump('modernized');
+    },
+    LogicalExpression(q) {
+      const n = q.node, r = n.right;
+      if (n.operator === '&&' && t.isIdentifier(n.left) && t.isMemberExpression(r) && t.isIdentifier(r.object, {name: n.left.name})) { q.replaceWith(t.optionalMemberExpression(r.object, r.property, r.computed, true)); bump('modernized'); }
+    },
+    VariableDeclaration(q) {
+      const n = q.node, par = q.parentPath; if (n.kind !== 'var' || !q.inList || !par.isBlockStatement() || !par.parentPath.isFunction()) return;
+      const bs = n.declarations.map(d => t.isIdentifier(d.id) && q.scope.getBinding(d.id.name));
+      if (bs.some((b, i) => !b || b.scope !== q.scope || typeof n.declarations[i].start !== 'number' || b.constantViolations.some(c => c.isVariableDeclarator()) || b.referencePaths.some(r => !(r.node.start > n.declarations[i].start)))) return;
+      n.kind = bs.every((b, i) => b.constant && n.declarations[i].init) ? 'const' : 'let'; bump('modernized');
+    }
+  }); };
+  if (o.names || o.read || o.prune || o.simp || o.modern || o.cff || o.prot) v.Program = {exit(p) {
+    if (o.cff) unflatten(p);
+    if (o.read) expand(p);
+    if (o.prot) stripProtections(p);
+    if (o.prune) deadStore(p);
+    if (o.simp) { p.traverse({DebuggerStatement(q) { q.remove(); bump('removed'); }}); inlineArgs(p); inlineProxies(p); inlineOnce(p); inlineConsts(p); inlineCalls(p); cleanParams(p); unwrap(p); }
+    if (o.prune) prune(p);
+    if (o.names) { p.scope.crawl(); rename(p); }
+    if (o.modern) modernize(p);
+  }};
+  return {visitor: v};
+};
+
+const ALPHA='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';
+const b64=s=>{let o='',bc=0,bs=0;for(const c of s){const p=ALPHA.indexOf(c);if(p<0)continue;bs=bc%4?bs*64+p:p;if(bc++%4)o+=String.fromCharCode(255&bs>>(-2*bc&6));}return o};
+const pct=s=>decodeURIComponent([...s].map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+const rc4=(s,k)=>{const S=[...Array(256).keys()];let j=0,t,i=0,r='';for(let a=0;a<256;a++){j=(j+S[a]+k.charCodeAt(a%k.length))%256;t=S[a];S[a]=S[j];S[j]=t}j=0;for(let y=0;y<s.length;y++){i=(i+1)%256;j=(j+S[i])%256;t=S[i];S[i]=S[j];S[j]=t;r+=String.fromCharCode(s.charCodeAt(y)^S[(S[i]+S[j])%256])}return r};
+function ev(n,env,call){const e=x=>ev(x,env,call);
+  switch(n.type){
+    case 'NumericLiteral':case 'StringLiteral':return n.value;
+    case 'Identifier':if(n.name in env)return env[n.name];throw 0;
+    case 'UnaryExpression':{const v=e(n.argument);if(n.operator==='-')return -v;if(n.operator==='+')return +v;throw 0}
+    case 'BinaryExpression':{const a=e(n.left),b=e(n.right);switch(n.operator){case '+':return a+b;case '-':return a-b;case '*':return a*b;case '/':return a/b}throw 0}
+    case 'CallExpression':{const c=n.callee;if(c.type==='Identifier'){if(c.name==='parseInt')return parseInt(e(n.arguments[0]));if(call)return call(c.name,n.arguments.map(e))}throw 0}
+  }throw 0}
+
+// Native obfuscator.io string-array decoder (base64, RC4 or plain). It finds the array, decoder and rotation, inlines every call, then drops the helpers. Nothing is executed.
+const decoderPlugin=({types:t})=>({visitor:{Program(p){
+  let arr,arrName,decName,off,mode='rc4';const body=p.node.body;
+  for(const s of body)if(t.isFunctionDeclaration(s)){
+    const vd=s.body.body.find(x=>t.isVariableDeclaration(x)&&t.isArrayExpression(x.declarations[0].init));
+    if(vd){const el=vd.declarations[0].init.elements;if(el.length>=3&&el.every(x=>t.isStringLiteral(x))){arrName=s.id.name;arr=el.map(x=>x.value)}}
+  }
+  if(!arr)return;
+  for(const s of body)if(t.isFunctionDeclaration(s)&&s.id.name!==arrName){
+    let hit=false,alpha=false,xor=false;
+    t.traverseFast(s,n=>{if(t.isCallExpression(n)&&t.isIdentifier(n.callee,{name:arrName}))hit=true;if(t.isStringLiteral(n)&&n.value.startsWith('abcdefghijklmnopqrstuvwxyz'))alpha=true;if(t.isBinaryExpression(n,{operator:'^'}))xor=true});
+    if(!hit)continue;decName=s.id.name;mode=xor?'rc4':alpha?'b64':'raw';
+    t.traverseFast(s,n=>{if(off===undefined&&t.isAssignmentExpression(n)&&t.isIdentifier(n.left)&&t.isBinaryExpression(n.right,{operator:'-'})&&t.isIdentifier(n.right.left,{name:n.left.name})){try{off=ev(n.right.right,{})}catch(e){}}});
+    break;
+  }
+  if(!decName||off===undefined)return;
+  const dec=(i,k)=>{const s=arr[i-off];if(s===undefined)throw 0;return mode==='rc4'?rc4(pct(b64(s)),k):mode==='b64'?pct(b64(s)):s};
+  const resolve=(scope,name,d=0)=>{
+    if(d>8)return null;const b=scope.getBinding(name);if(!b)return null;const n=b.path.node;
+    if(name===decName&&b.scope.path.isProgram())return a=>dec(a[0],a[1]);
+    if(t.isVariableDeclarator(n)&&t.isIdentifier(n.init))return resolve(b.path.scope,n.init.name,d+1);
+    if(t.isFunctionDeclaration(n)&&n.body.body.length===1&&t.isReturnStatement(n.body.body[0])){
+      const ce=n.body.body[0].argument;if(!t.isCallExpression(ce)||!t.isIdentifier(ce.callee))return null;
+      const f=resolve(b.path.scope,ce.callee.name,d+1);if(!f)return null;const ps=n.params.map(x=>x.name);
+      return a=>{const env={};ps.forEach((x,i)=>env[x]=a[i]);return f(ce.arguments.map(x=>ev(x,env)))}}
+    return null};
+  let rot,rotPath;p.traverse({CallExpression(c){const n=c.node;if(!rotPath&&t.isFunctionExpression(n.callee)&&n.arguments.length===2&&t.isIdentifier(n.arguments[0],{name:arrName})){rot=n;rotPath=c}}});
+  if(rot){
+    let target;try{target=ev(rot.arguments[1],{})}catch(e){return}
+    let expr;t.traverseFast(rot.callee,n=>{if(!expr&&t.isVariableDeclarator(n)&&n.init){let has=false;t.traverseFast(n.init,m=>{if(t.isCallExpression(m)&&t.isIdentifier(m.callee,{name:'parseInt'}))has=true});if(has)expr=n.init}});
+    if(!expr)return;
+    const rs=rotPath.get('callee').scope,call=(name,args)=>{const f=resolve(rs,name);if(!f)throw 0;return f(args)};
+    for(let k=0;;k++){let v;try{v=ev(expr,{},call)}catch(e){v=NaN}if(v===target)break;if(k>=arr.length)return;arr.push(arr.shift())}
+    rotPath.remove();p.scope.crawl();
+  }
+  p.traverse({CallExpression(c){const cal=c.node.callee;if(!t.isIdentifier(cal))return;
+    try{const f=resolve(c.scope,cal.name);if(!f)return;const v=f(c.node.arguments.map(a=>ev(a,{})));
+      if(typeof v==='string'){c.replaceWith(t.stringLiteral(v));stats.decoded=(stats.decoded||0)+1}}catch(e){}}});
+}}});
+
+const BASE={configFile:false,babelrc:false,sourceType:'unambiguous',parserOpts:{allowReturnOutsideFunction:true,allowAwaitOutsideFunction:true},generatorOpts:{jsescOption:{minimal:true}}};
+function unravel(src,o){
+  stats={};counter=0;let code=src;
+  if(o.dec)code=Babel.transform(code,{...BASE,plugins:[decoderPlugin]}).code;
+  for(let i=0;i<10;i++){const prev=code;code=Babel.transform(code,{...BASE,plugins:[make(o)]}).code;if(code===prev)break}
+  return code;
+}
+
+// Optional engines, loaded from jsDelivr on first use.
+const mods={},imp=(k,u)=>mods[k]||(mods[k]=import(u));
+let frame,ready;
+function sbx(code){return new Promise(async(res,rej)=>{
+  if(!frame){frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.hidden=true;
+    ready=new Promise(r=>frame.addEventListener('load',r));
+    frame.srcdoc='<script>addEventListener("message",e=>{try{e.source.postMessage({id:e.data.id,v:(0,eval)(e.data.code)},"*")}catch(x){e.source.postMessage({id:e.data.id,err:String(x)},"*")}})<\/script>';
+    document.body.appendChild(frame)}
+  await ready;const id=Math.random();
+  const on=e=>{if(e.data&&e.data.id===id){removeEventListener('message',on);e.data.err?rej(new Error(e.data.err)):res(e.data.v)}};
+  addEventListener('message',on);frame.contentWindow.postMessage({id,code},'*')})}
+async function viaWebcrack(src){const m=await imp('webcrack','https://cdn.jsdelivr.net/npm/webcrack/+esm');return (await m.webcrack(src,{sandbox:sbx,mangle:false,unpack:false,jsx:false})).code}
+async function viaSynchrony(src){const m=await imp('synchrony','https://cdn.jsdelivr.net/npm/deobfuscator/+esm');
+  const D=m.Deobfuscator||(m.default&&m.default.Deobfuscator)||m.default;const r=await new D().deobfuscateSource(src);return typeof r==='string'?r:(r&&r.code)||src}
+async function viaWakaru(code){const m=await imp('wakaru','https://cdn.jsdelivr.net/npm/@wakaru/unminify/+esm');
+  const f=m.runDefaultTransformationRules||m.default;const r=await f({source:code,path:'input.js'});
+  return typeof r==='string'?r:(r&&(r.code||r.source))||code}
+const messy=c=>/_0x[0-9a-f]{3,}|\bvoid 0\b|[(\s,=]!0\b|[(\s,=]!1\b/.test(c);
+const short=e=>String(e&&e.message||e).split('\n')[0].slice(0,120);
+
+// Dean Edwards packer, unpacked by reimplementing its decoder. Nothing is executed.
+function unpackPacker(code) {
+  const re = /eval\(function\(p,a,c,k,e,[dr]\)\{[\s\S]*?\}\('((?:[^'\\]|\\.)*)',(\d+),(\d+),'((?:[^'\\]|\\.)*)'\.split\('\|'\),\d+,\{\}\)\)/;
+  let out = code, m, guard = 0;
+  while ((m = re.exec(out)) && guard++ < 10) {
+    const a = +m[2]; let c = +m[3]; const k = m[4].replace(/\\(['\\])/g, '$1').split('|'), d = {};
+    const e = n => (n < a ? '' : e(parseInt(n / a))) + ((n = n % a) > 35 ? String.fromCharCode(n + 29) : n.toString(36));
+    while (c--) d[e(c)] = k[c] || e(c);
+    const r = m[1].replace(/\\(['\\])/g, '$1').replace(/\b\w+\b/g, w => Object.prototype.hasOwnProperty.call(d, w) ? d[w] : w);
+    out = out.replace(m[0], () => r);
+  }
+  return out;
+}
+// Layer peeler: replaces eval("literal"), Function("literal")() and atob("literal") with their contents.
+let peels = 0;
+const peelPlugin = ({types: t}) => ({visitor: {CallExpression(p) {
+  const n = p.node; let c = n.callee; if (t.isSequenceExpression(c)) c = c.expressions[c.expressions.length - 1];
+  const lit = n.arguments.length === 1 && t.isStringLiteral(n.arguments[0]) ? n.arguments[0].value : null;
+  const body = s => Babel.transform(s, {...BASE, ast: true, code: false}).ast.program.body;
+  try {
+    if (lit !== null && t.isIdentifier(c, {name: 'eval'}) && p.parentPath.isExpressionStatement()) { p.parentPath.replaceWithMultiple(body(lit)); peels++; }
+    else if (lit !== null && t.isIdentifier(c, {name: 'atob'})) { p.replaceWith(t.stringLiteral(atob(lit))); peels++; }
+    else if (!n.arguments.length && (t.isCallExpression(c) || t.isNewExpression(c)) && t.isIdentifier(c.callee, {name: 'Function'}) && c.arguments.length === 1 && t.isStringLiteral(c.arguments[0]) && p.parentPath.isExpressionStatement()) { p.parentPath.replaceWithMultiple(body(c.arguments[0].value)); peels++; }
+  } catch (e) {}
+}}});
+function peel(src, o) {
+  let code = src; peels = 0;
+  for (let i = 0; i < 8; i++) { const before = peels; code = Babel.transform(unravel(code, o), {...BASE, plugins: [peelPlugin]}).code; if (peels === before) break; }
+  code = unravel(code, o); stats.peeled = peels; return code;
+}
+async function viaOio(src) {
+  const m = await imp('oio', 'https://cdn.jsdelivr.net/npm/obfuscator-io-deobfuscator/+esm');
+  const D = m.Deobfuscator || (m.default && m.default.Deobfuscator);
+  const r = D ? await new D(src, {}).execute() : await (m.deobfuscate || m.default)(src);
+  return typeof r === 'string' ? r : (r && r.code) || src;
+}
+// Dump mode: runs the code in a sandboxed iframe with hooks that record what it evals, builds, decodes or tries to reach.
+function hooks() {
+  const post = (k, v) => { try { parent.postMessage({dump: {k, v: String(v).slice(0, 200000)}}, '*'); } catch (e) {} };
+  const _eval = window.eval, _F = window.Function;
+  window.eval = function (c) { post('eval', c); return typeof c === 'string' ? _eval(c) : c; };
+  const PF = new Proxy(_F, {apply(t, th, a) { post('Function', a.join('\n')); return Reflect.apply(t, th, a); }, construct(t, a) { post('Function', a.join('\n')); return Reflect.construct(t, a); }});
+  window.Function = PF; _F.prototype.constructor = PF;
+  for (const n of ['setTimeout', 'setInterval']) { const o = window[n]; window[n] = function (f, ...r) { if (typeof f === 'string') post(n, f); return o.call(window, f, ...r); }; }
+  document.write = function (...a) { post('document.write', a.join('')); };
+  const ab = window.atob; window.atob = function (s) { const r = ab(s); post('atob', r); return r; };
+  for (const n of ['log', 'info', 'warn', 'error']) console[n] = (...a) => post('console.' + n, a.map(String).join(' '));
+  window.fetch = u => { post('fetch', (u && u.url) || u); return new Promise(() => {}); };
+  window.XMLHttpRequest = function () { return {open(m, u) { post('xhr', m + ' ' + u); }, send() {}, setRequestHeader() {}, addEventListener() {}}; };
+  window.WebSocket = function (u) { post('websocket', u); return {send() {}, close() {}}; };
+  navigator.sendBeacon = u => { post('beacon', u); return true; };
+  window.addEventListener('message', e => { if (e.data && typeof e.data.code === 'string') { try { _eval(e.data.code); } catch (x) { post('error', (x && x.stack) || x); } setTimeout(() => parent.postMessage({end: 1}, '*'), 600); } });
+}
+function dumpMode(src, o) {
+  return new Promise(res => {
+    const f = document.createElement('iframe'); f.sandbox = 'allow-scripts'; f.hidden = true; const ev = []; let done;
+    const fin = () => { if (done) return; done = 1; removeEventListener('message', on); clearTimeout(tm); f.remove(); res(fmtDump(ev, o)); };
+    const on = e => { if (e.source !== f.contentWindow) return; const d = e.data || {}; if (d.dump) ev.push(d.dump); if (d.end) fin(); };
+    addEventListener('message', on); const tm = setTimeout(fin, 5000);
+    f.srcdoc = '<script>(' + hooks.toString() + ')()<\/script>';
+    f.addEventListener('load', () => f.contentWindow.postMessage({code: src}, '*'));
+    document.body.appendChild(f);
+  });
+}
+function fmtDump(ev, o) {
+  const L = ['// Dump: ' + ev.length + ' event(s) captured while the code ran in a sandboxed iframe.']; let n = 0;
+  for (const {k, v} of ev) {
+    if (/^(eval|Function|setTimeout|setInterval|document\.write)$/.test(k)) { let c = v; try { c = unravel(v, o); } catch (e) {} L.push('\n// ---- layer ' + (++n) + ': ' + k + ' ----\n' + c); }
+    else L.push('// ' + k + ': ' + v.replace(/\n/g, '\\n'));
+  }
+  if (!ev.length) L.push('// Nothing was captured. This code may not call eval, Function or the network, so try a deobfuscator engine instead.');
+  stats = {dumped: ev.length}; return L.join('\n');
+}
+
+async function run() {
+  const status=$('status');status.className='';
+  if(typeof Babel==='undefined'){status.className='err';status.textContent='The parser failed to load. Check your connection and reload.';return}
+  const src=$('in').value;
+  if(!src.trim()){status.className='err';status.textContent='Paste some JavaScript into the input first.';return}
+  const o={lit:$('o-lit').checked,fold:$('o-fold').checked,dead:$('o-dead').checked,mem:$('o-mem').checked,seq:$('o-seq').checked,names:$('o-names').checked,read:$('o-read').checked,prune:$('o-prune').checked,simp:$('o-simp').checked,cff:$('o-cff').checked,prot:$('o-prot').checked,short:$('o-short').checked,dec:$('o-dec').checked};
+  const mode=$('mode').value,engine=$('engine').value,notes=[];let pol=$('polish').value,code;
+  if(mode==='decomp'){o.modern=true;if(pol!=='off')pol='always'}
+  if(mode==='dump'){pol='off';if(!$('o-dumpok').checked){status.className='err';status.textContent='Tick the box to confirm Dump mode may run this code.';return}}
+  $('run').disabled=true;
+  try{
+    if(mode==='dump'){status.textContent='Running in a sandbox…';stats={};code=await dumpMode(src,o)}
+    else if(engine==='packer'){stats={};const u=unpackPacker(src);notes.push(u===src?'no packer found':'unpacked');code=unravel(u,o)}
+    else if(engine==='peeler'){status.textContent='Peeling layers…';code=peel(src,o)}
+    else if(engine==='oio'){status.textContent='Running obfuscator-io-deobfuscator…';stats={};code=await viaOio(src);notes.push('obfuscator-io-deobfuscator finished')}
+    else if(engine==='webcrack'||engine==='both'){status.textContent='Running webcrack…';stats={};code=await viaWebcrack(src);notes.push('webcrack finished');if(engine==='both')code=unravel(code,o)}
+    else if(engine==='synchrony'){status.textContent='Running Synchrony…';stats={};code=await viaSynchrony(src);notes.push('Synchrony finished')}
+    else code=unravel(src,o);
+    if(pol==='always'||(pol==='auto'&&messy(code))){
+      status.textContent='Polishing with Wakaru…';
+      try{code=await viaWakaru(code);notes.push('polished with Wakaru')}catch(e){notes.push('Wakaru could not run ('+short(e)+')')}
+    }
+  }catch(e){status.className='err';status.textContent=(mode==='dump'?'Dump failed: ':engine!=='unravel'?'That engine failed: ':'Could not process the input: ')+short(e)+(engine!=='unravel'?'. Try the Unravel engine.':'');$('run').disabled=false;return}
+  $('out').value=code;$('run').disabled=false;
+  const parts=Object.keys(LABELS).filter(k=>stats[k]).map(k=>stats[k]+' '+LABELS[k]).concat(notes);
+  status.textContent=parts.length?'Done. '+parts.join(', ')+'.':'Done. Nothing here matched the enabled transforms.';
+}
+
+$('run').onclick = run;
+$('mode').onchange = () => { const d = $('mode').value === 'dump'; $('dumpok').hidden = !d; $('engine').disabled = d; $('polish').disabled = d; };
+$('sample').onclick = () => { $('in').value = SAMPLE; run(); };
+$('clear').onclick = () => { $('in').value = ''; $('out').value = ''; $('status').textContent = ''; };
+$('copy').onclick = async () => {
+  const out = $('out'), s = $('status'); if (!out.value) return;
+  try { await navigator.clipboard.writeText(out.value); } catch (e) { out.select(); document.execCommand('copy'); }
+  s.className = ''; s.textContent = 'Copied the output.';
+};
+</script>
+</body>
+</html>
