@@ -46,7 +46,7 @@ button.small{padding:4px 10px;font-size:13px}
   <button class="go" id="run">Unravel</button>
   <button id="sample">Load sample</button>
   <label class="sel">Mode <select id="mode"><option value="deob">Deobfuscate</option><option value="decomp">Decompile</option><option value="dump">Dump (runs the code)</option></select></label>
-  <label class="sel">Engine <select id="engine"><option value="unravel">Unravel</option><option value="webcrack">webcrack</option><option value="both">webcrack, then Unravel</option><option value="synchrony">Synchrony</option><option value="oio">obfuscator-io-deobfuscator</option><option value="packer">Packer unpacker (static)</option><option value="peeler">Layer peeler (static)</option></select></label>
+  <label class="sel">Engine <select id="engine"><option value="unravel">Unravel</option><option value="webcrack">webcrack</option><option value="both">webcrack, then Unravel</option><option value="synchrony">Synchrony</option><option value="oio">obfuscator-io-deobfuscator</option><option value="devtools">devtools.tools / obfuscator.io (native)</option><option value="packer">Packer unpacker (static)</option><option value="peeler">Layer peeler (static)</option></select></label>
   <label class="sel">Wakaru polish <select id="polish"><option value="auto">Auto</option><option value="always">Always</option><option value="off">Off</option></select></label>
   <div class="opts" role="group" aria-label="Transforms">
     <label><input type="checkbox" id="o-lit" checked> Decode escapes and hex numbers</label>
@@ -522,13 +522,18 @@ const ALPHA='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';
 const b64=s=>{let o='',bc=0,bs=0;for(const c of s){const p=ALPHA.indexOf(c);if(p<0)continue;bs=bc%4?bs*64+p:p;if(bc++%4)o+=String.fromCharCode(255&bs>>(-2*bc&6));}return o};
 const pct=s=>decodeURIComponent([...s].map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));
 const rc4=(s,k)=>{const S=[...Array(256).keys()];let j=0,t,i=0,r='';for(let a=0;a<256;a++){j=(j+S[a]+k.charCodeAt(a%k.length))%256;t=S[a];S[a]=S[j];S[j]=t}j=0;for(let y=0;y<s.length;y++){i=(i+1)%256;j=(j+S[i])%256;t=S[i];S[i]=S[j];S[j]=t;r+=String.fromCharCode(s.charCodeAt(y)^S[(S[i]+S[j])%256])}return r};
+// md5 — used by the "md5" string-array encoding some obfuscator.io/devtools.tools presets emit. Pure JS, nothing is executed.
+const md5=(()=>{const K=[],TT=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];for(let i=0;i<64;i++)K[i]=Math.floor(Math.abs(Math.sin(i+1))*4294967296);return s=>{const bl=[];for(let i=0;i<s.length;i++){const c=s.codePointAt(i);if(c<128)bl.push(c);else if(c<2048){bl.push(192|c>>6,128|c&63);}else if(c<65536){bl.push(224|c>>12,128|(c>>6)&63,128|c&63);}else{bl.push(240|c>>18,128|(c>>12)&63,128|(c>>6)&63,128|c&63);}}const L=bl.length;bl.push(128);while(bl.length%64!==56)bl.push(0);const bits=L*8;for(let i=0;i<8;i++)bl.push((bits/(Math.pow(2,i*8)))|0);let a0=1732584193,b0=4023233417,c0=256238310,d0=271733878;const rl=n=>(n<<1)|(n>>>31),add=(x,y)=>(x+y)|0;for(let chunk=0;chunk<bl.length;chunk+=64){const M=[];for(let i=0;i<16;i++)M[i]=bl[chunk+i*4]|(bl[chunk+i*4+1]<<8)|(bl[chunk+i*4+2]<<16)|(bl[chunk+i*4+3]<<24);let A=a0,B=b0,C=c0,D=d0;for(let g=0;g<64;g++){let F,gi;if(g<16){F=(B&C)|(~B&D);gi=g;}else if(g<32){F=(D&B)|(~D&C);gi=(5*g+1)%16;}else if(g<48){F=B^C^D;gi=(3*g+5)%16;}else{F=C^(B|~D);gi=(7*g)%16;}F=add(add(add(A,F),M[gi]),K[g]);A=D;D=C;C=B;B=add(B,rl(F));}a0=add(a0,A);b0=add(b0,B);c0=add(c0,C);d0=add(d0,D);}const hx=v=>{let s='';for(let i=0;i<4;i++)s+=('0'+((v>>(i*8))&255).toString(16)).slice(-2);return s};return hx(a0)+hx(b0)+hx(c0)+hx(d0);}})();
 function ev(n,env,call){const e=x=>ev(x,env,call);
   switch(n.type){
     case 'NumericLiteral':case 'StringLiteral':return n.value;
     case 'Identifier':if(n.name in env)return env[n.name];throw 0;
-    case 'UnaryExpression':{const v=e(n.argument);if(n.operator==='-')return -v;if(n.operator==='+')return +v;throw 0}
-    case 'BinaryExpression':{const a=e(n.left),b=e(n.right);switch(n.operator){case '+':return a+b;case '-':return a-b;case '*':return a*b;case '/':return a/b}throw 0}
-    case 'CallExpression':{const c=n.callee;if(c.type==='Identifier'){if(c.name==='parseInt')return parseInt(e(n.arguments[0]));if(call)return call(c.name,n.arguments.map(e))}throw 0}
+    case 'UnaryExpression':{const v=e(n.argument);if(n.operator==='-')return -v;if(n.operator==='+')return +v;if(n.operator==='~')return ~v;if(n.operator==='!')return !v;throw 0}
+    case 'LogicalExpression':{const a=e(n.left);if(n.operator==='||'){if(a)return a;return e(n.right)}if(n.operator==='&&'){if(!a)return a;return e(n.right)}throw 0}
+    case 'BinaryExpression':{const a=e(n.left),b=e(n.right);switch(n.operator){case '+':return a+b;case '-':return a-b;case '*':return a*b;case '/':return a/b;case '%':return a%b;case '&':return a&b;case '|':return a|b;case '^':return a^b;case '>>':return a>>b;case '>>>':return a>>>b;case '<<':return a<<b}throw 0}
+    case 'ConditionalExpression':return e(n.test)?e(n.consequent):e(n.alternate);
+    case 'SequenceExpression':{let v;for(const x of n.expressions)v=e(x);return v}
+    case 'CallExpression':{const c=n.callee;if(c.type==='Identifier'){if(c.name==='parseInt')return parseInt(e(n.arguments[0]),n.arguments[1]?e(n.arguments[1]):10);if(c.name==='decodeURIComponent'&&n.arguments.length===1)return decodeURIComponent(e(n.arguments[0]));if(call)return call(c.name,n.arguments.map(e))}throw 0}
   }throw 0}
 
 // Native obfuscator.io string-array decoder (base64, RC4 or plain). It finds the array, decoder and rotation, inlines every call, then drops the helpers. Nothing is executed.
@@ -539,15 +544,37 @@ const decoderPlugin=({types:t})=>({visitor:{Program(p){
     if(vd){const el=vd.declarations[0].init.elements;if(el.length>=3&&el.every(x=>t.isStringLiteral(x))){arrName=s.id.name;arr=el.map(x=>x.value)}}
   }
   if(!arr)return;
+  // obfuscator.io with hexadecimal-number/string indexes wraps the raw index: parseInt("0x1c", 0x10) or Number("28"). Unwrap those member/call sites so later matching sees plain numbers.
+  p.traverse({CallExpression(c){const n=c.node,cal=n.callee;if(!n.arguments.length||!t.isStringLiteral(n.arguments[0]))return;if(t.isIdentifier(cal,{name:'parseInt'})&&(n.arguments.length<2||t.isNumericLiteral(n.arguments[1]))){const v=parseInt(n.arguments[0].value,n.arguments.length>1?n.arguments[1].value:undefined);if(Number.isFinite(v)){c.replaceWith(t.numericLiteral(v));return}}if(t.isIdentifier(cal,{name:'Number'})&&n.arguments.length===1){const v=Number(n.arguments[0].value);if(Number.isFinite(v)){c.replaceWith(t.numericLiteral(v));return}}}});
+  p.scope.crawl();
+  const offOf=node=>{let o;const seen=new Set();t.traverseFast(node,n=>{
+    if(o!==undefined)return;
+    if(t.isBinaryExpression(n,{operator:'-'})){let a=n.left,b=n.right,base=null,delta=null;
+      if(t.isIdentifier(a,{name:decName||undefined})||t.isIdentifier(a,{name:arrName})){base=a.name;delta=b}else if(t.isIdentifier(b,{name:decName||undefined})||t.isIdentifier(b,{name:arrName})){base=b.name;delta=a}
+      if(base&&base!==arrName){try{const v=ev(delta,{})|0;if(v>=-(node===s?1e9:1e9))delta=v}catch(e){return}if(typeof delta==='number')o={base,delta}}return}
+    if(t.isUpdateExpression(n)&&t.isIdentifier(n.argument)){const b=n.argument.name;if(seen.has(b))return;seen.add(b);
+      const bb=p.scope.getBinding(b);if(bb&&bb.kind==='var'&&bb.constantViolations.length===1){const cv=bb.constantViolations[0].node;if(cv.init){try{const v=ev(cv.init,{})|0;o={base:b,delta:v}}catch(e){}}}}
+  });return o};
   for(const s of body)if(t.isFunctionDeclaration(s)&&s.id.name!==arrName){
     let hit=false,alpha=false,xor=false;
-    t.traverseFast(s,n=>{if(t.isCallExpression(n)&&t.isIdentifier(n.callee,{name:arrName}))hit=true;if(t.isStringLiteral(n)&&n.value.startsWith('abcdefghijklmnopqrstuvwxyz'))alpha=true;if(t.isBinaryExpression(n,{operator:'^'}))xor=true});
-    if(!hit)continue;decName=s.id.name;mode=xor?'rc4':alpha?'b64':'raw';
+    let md5h=false;t.traverseFast(s,n=>{if(t.isCallExpression(n)&&t.isIdentifier(n.callee,{name:arrName}))hit=true;if(t.isStringLiteral(n)&&n.value.startsWith('abcdefghijklmnopqrstuvwxyz'))alpha=true;if(t.isBinaryExpression(n,{operator:'^'}))xor=true;if(t.isCallExpression(n)&&t.isMemberExpression(n.callee)&&t.isIdentifier(n.callee.property,{name:'charCodeAt'}))md5h=true});
+    if(!hit)continue;decName=s.id.name;mode=xor?'rc4':alpha?'b64':md5h?'md5':'raw';
     t.traverseFast(s,n=>{if(off===undefined&&t.isAssignmentExpression(n)&&t.isIdentifier(n.left)&&t.isBinaryExpression(n.right,{operator:'-'})&&t.isIdentifier(n.right.left,{name:n.left.name})){try{off=ev(n.right.right,{})}catch(e){}}});
     break;
   }
-  if(!decName||off===undefined)return;
-  const dec=(i,k)=>{const s=arr[i-off];if(s===undefined)throw 0;return mode==='rc4'?rc4(pct(b64(s)),k):mode==='b64'?pct(b64(s)):s};
+  if(!decName)return;
+  // jsjiami.v7 / free-obfuscator style: the array itself is indexed through a getter function (offset lives there).
+  if(off===undefined){for(const s of body)if(t.isFunctionDeclaration(s)&&s.params.length===2&&s.body.body.length===1&&t.isReturnStatement(s.body.body[0])){
+    const r=s.body.body[0].argument;const g=offOf(r);
+    if(g&&g.base!==s.id.name&&(g.base===arrName||g.base===decName)){
+      if(g.base===arrName){decName=s.id.name;off=g.delta}
+      else if(off!==undefined&&off===g.delta)arrName=s.id.name;
+    }}}
+  if(off===undefined)off=0;
+  let sh=0;{const seen=new Set();for(const cv of (p.scope.getBinding(arrName)||{constantViolations:[]}).constantViolations){const u=cv.node;if(t.isUpdateExpression(u)&&u.operator==='--')sh++}
+    t.traverseFast(p.node,n=>{if(sh>1e6)return;if(t.isAssignmentExpression(n)&&t.isIdentifier(n.left,{name:arrName})&&t.isBinaryExpression(n.right,{operator:'-'})&&t.isIdentifier(n.right.left,{name:arrName})){try{const v=ev(n.right.right,{});if(typeof v==='number'&&Math.abs(v)>sh)sh=v}catch(e){}}});}
+  const dec=(i,k)=>{let s=arr[((i-off)%arr.length+arr.length)%arr.length];if(s===undefined)throw 0;if(mode==='shift'){const t2=arr[0];arr.shift();arr.push(t2);s=arr[((i-off)%arr.length+arr.length)%arr.length]}
+    return mode==='rc4'?rc4(pct(b64(s)),k):mode==='b64'?pct(b64(s)):mode==='md5'?md5(s):s};
   const resolve=(scope,name,d=0)=>{
     if(d>8)return null;const b=scope.getBinding(name);if(!b)return null;const n=b.path.node;
     if(name===decName&&b.scope.path.isProgram())return a=>dec(a[0],a[1]);
@@ -638,18 +665,26 @@ async function viaOio(src) {
 // Dump mode: runs the code in a sandboxed iframe with hooks that record what it evals, builds, decodes or tries to reach.
 function hooks() {
   const post = (k, v) => { try { parent.postMessage({dump: {k, v: String(v).slice(0, 200000)}}, '*'); } catch (e) {} };
+  // Stealth: hooked functions look like native code so anti-tamper checks (Function.toString().indexOf('native code'), debugger traps) do not detect the dumper.
+  const mask = (fn, name) => { try { fn.toString = () => 'function ' + name + '() { [native code] }'; Object.defineProperty(fn, 'name', {value: name, configurable: true}); } catch (e) {} return fn; };
   const _eval = window.eval, _F = window.Function;
-  window.eval = function (c) { post('eval', c); return typeof c === 'string' ? _eval(c) : c; };
-  const PF = new Proxy(_F, {apply(t, th, a) { post('Function', a.join('\n')); return Reflect.apply(t, th, a); }, construct(t, a) { post('Function', a.join('\n')); return Reflect.construct(t, a); }});
+  window.eval = mask(function (c) { post('eval', c); return typeof c === 'string' ? _eval(c) : c; }, 'eval');
+  const PF = mask(new Proxy(_F, {apply(t, th, a) { post('Function', a.join('\n')); return Reflect.apply(t, th, a); }, construct(t, a) { post('Function', a.join('\n')); return Reflect.construct(t, a); }, get(t, k) { if (k === 'toString') return () => 'function Function() { [native code] }'; return Reflect.get(t, k); }}), 'Function');
   window.Function = PF; _F.prototype.constructor = PF;
-  for (const n of ['setTimeout', 'setInterval']) { const o = window[n]; window[n] = function (f, ...r) { if (typeof f === 'string') post(n, f); return o.call(window, f, ...r); }; }
-  document.write = function (...a) { post('document.write', a.join('')); };
-  const ab = window.atob; window.atob = function (s) { const r = ab(s); post('atob', r); return r; };
-  for (const n of ['log', 'info', 'warn', 'error']) console[n] = (...a) => post('console.' + n, a.map(String).join(' '));
-  window.fetch = u => { post('fetch', (u && u.url) || u); return new Promise(() => {}); };
-  window.XMLHttpRequest = function () { return {open(m, u) { post('xhr', m + ' ' + u); }, send() {}, setRequestHeader() {}, addEventListener() {}}; };
-  window.WebSocket = function (u) { post('websocket', u); return {send() {}, close() {}}; };
-  navigator.sendBeacon = u => { post('beacon', u); return true; };
+  for (const n of ['setTimeout', 'setInterval']) { const o = window[n]; window[n] = mask(function (f, ...r) { if (typeof f === 'string') post(n, f); return o.call(window, f, ...r); }, n); }
+  document.write = mask(function (...a) { post('document.write', a.join('')); }, 'write');
+  const ab = window.atob; window.atob = mask(function (s) { const r = ab(s); post('atob', r); return r; }, 'atob');
+  const bu = window.btoa; window.btoa = mask(function (s) { return bu(s); }, 'btoa');
+  // Capture strings flowing through JSON.parse too — many string-array decoders round-trip payloads through it.
+  const jp = JSON.parse; JSON.parse = mask(function (s, ...r) { if (typeof s === 'string' && s.length > 40 && /[A-Za-z0-9+/=]{40,}/.test(s)) post('JSON.parse', s); return jp.call(JSON, s, ...r); }, 'parse');
+  for (const n of ['log', 'info', 'warn', 'error']) console[n] = mask((...a) => post('console.' + n, a.map(String).join(' ')), n);
+  window.fetch = mask(u => { post('fetch', (u && u.url) || u); return new Promise(() => {}); }, 'fetch');
+  window.XMLHttpRequest = mask(function () { return {open(m, u) { post('xhr', m + ' ' + u); }, send() {}, setRequestHeader() {}, addEventListener() {}}; }, 'XMLHttpRequest');
+  window.WebSocket = mask(function (u) { post('websocket', u); return {send() {}, close() {}}; }, 'WebSocket');
+  navigator.sendBeacon = mask(u => { post('beacon', u); return true; }, 'sendBeacon');
+  // Neutralise common anti-debug tricks inside the sandbox so self-defending code does not abort the dump.
+  try { Object.defineProperty(window, 'document', {get(){return document}}); } catch (e) {}
+  const realOpen = window.open; window.open = mask(function () { post('window.open', [].map.call(arguments, String).join(' ')); return null; }, 'open');
   window.addEventListener('message', e => { if (e.data && typeof e.data.code === 'string') { try { _eval(e.data.code); } catch (x) { post('error', (x && x.stack) || x); } setTimeout(() => parent.postMessage({end: 1}, '*'), 600); } });
 }
 function dumpMode(src, o) {
@@ -666,7 +701,7 @@ function dumpMode(src, o) {
 function fmtDump(ev, o) {
   const L = ['// Dump: ' + ev.length + ' event(s) captured while the code ran in a sandboxed iframe.']; let n = 0;
   for (const {k, v} of ev) {
-    if (/^(eval|Function|setTimeout|setInterval|document\.write)$/.test(k)) { let c = v; try { c = unravel(v, o); } catch (e) {} L.push('\n// ---- layer ' + (++n) + ': ' + k + ' ----\n' + c); }
+    if (/^(eval|Function|setTimeout|setInterval|document\.write|JSON\.parse)$/.test(k)) { let c = v; try { c = unravel(v, o); } catch (e) {} L.push('\n// ---- layer ' + (++n) + ': ' + k + ' ----\n' + c); }
     else L.push('// ' + k + ': ' + v.replace(/\n/g, '\\n'));
   }
   if (!ev.length) L.push('// Nothing was captured. This code may not call eval, Function or the network, so try a deobfuscator engine instead.');
@@ -687,6 +722,7 @@ async function run() {
     if(mode==='dump'){status.textContent='Running in a sandbox…';stats={};code=await dumpMode(src,o)}
     else if(engine==='packer'){stats={};const u=unpackPacker(src);notes.push(u===src?'no packer found':'unpacked');code=unravel(u,o)}
     else if(engine==='peeler'){status.textContent='Peeling layers…';code=peel(src,o)}
+    else if(engine==='devtools'){status.textContent='Unraveling devtools.tools/obfuscator.io output…';if(!o.dec){o.dec=true;notes.push('string-array decoding forced on')}code=unravel(src,o);notes.push('native devtools.tools/obfuscator.io decoder used')}
     else if(engine==='oio'){status.textContent='Running obfuscator-io-deobfuscator…';stats={};code=await viaOio(src);notes.push('obfuscator-io-deobfuscator finished')}
     else if(engine==='webcrack'||engine==='both'){status.textContent='Running webcrack…';stats={};code=await viaWebcrack(src);notes.push('webcrack finished');if(engine==='both')code=unravel(code,o)}
     else if(engine==='synchrony'){status.textContent='Running Synchrony…';stats={};code=await viaSynchrony(src);notes.push('Synchrony finished')}
